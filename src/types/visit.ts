@@ -1,7 +1,5 @@
-export interface Visitor {
-  id: number;
-  name: string;
-}
+import type { Visitor } from "./visitor";
+
 
 export interface CabinVisit {
   id: number;
@@ -13,4 +11,13 @@ export interface CabinVisit {
 
 export interface CabinVisitsResponse {
   visitSummaries: CabinVisit[];
+}
+
+export interface CreateVisitRequest {
+  name: string;
+  startDate: string;
+  endDate: string;
+  visitors: {
+    fullTimeVisitorIds: number[];
+  };
 }

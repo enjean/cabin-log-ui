@@ -1,4 +1,4 @@
-import type { CabinVisit, CabinVisitsResponse } from '../types/visit';
+import type { CabinVisit, CabinVisitsResponse, CreateVisitRequest } from '../types/visit';
 import api from './axiosInstance';
 
 export const getVisitsByCabin = async (cabinId: string): Promise<CabinVisit[]> => {
@@ -6,7 +6,7 @@ export const getVisitsByCabin = async (cabinId: string): Promise<CabinVisit[]> =
   return data.visitSummaries;
 };
 
-export const createVisit = async (cabinId: string, visitData: { name: string; startDate: string; endDate: string }): Promise<CabinVisit> => {
+export const createVisit = async (cabinId: string, visitData: CreateVisitRequest): Promise<CabinVisit> => {
   const { data } = await api.post<CabinVisit>(`/cabins/${cabinId}/visits`, visitData);
   return data;
 };

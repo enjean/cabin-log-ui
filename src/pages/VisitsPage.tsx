@@ -2,10 +2,14 @@ import React, { useState } from 'react';
 import { useParams } from 'react-router-dom'; // Standard routing hook
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getVisitsByCabin, createVisit } from '../api/visitApi';
+import { getVisitorsByCabin } from '../api/visitorApi';
+import type { Visitor } from '../types/visitor';
+import type { CreateVisitRequest } from '../types/visit';
 import './VisitsPage.css';
 
 const formatDate = (dateString: string): string => {
-  const date = new Date(dateString);
+  const [year, month, day] = dateString.split('-').map(Number);
+  const date = new Date(year, month - 1, day);
   return date.toLocaleDateString('en-US', { 
     year: 'numeric', 
     month: 'short', 
@@ -24,6 +28,10 @@ const VisitsPage: React.FC = () => {
     startDate: '',
     endDate: ''
   });
+  const [isSameDayVisit, setIsSameDayVisit] = useState(false);
+  const [selectedVisitors, setSelectedVisitors] = useState<Visitor[]>([]);
+  const [visitorSearch, setVisitorSearch] = useState('');
+  const [showVisitorDropdown, setShowVisitorDropdown] = useState(false);
 
   const { data: visits, isLoading, error } = useQuery({
     // Include cabinId in the key so the query is unique per cabin!
@@ -32,13 +40,22 @@ const VisitsPage: React.FC = () => {
     enabled: !!cabinId, // Only run if we actually have an ID
   });
 
+  const { data: visitors = [] } = useQuery({
+    queryKey: ['visitors', cabinId],
+    queryFn: () => getVisitorsByCabin(cabinId!),
+    enabled: !!cabinId,
+  });
+
   const createVisitMutation = useMutation({
-    mutationFn: (visitData: { name: string; startDate: string; endDate: string }) =>
+    mutationFn: (visitData: CreateVisitRequest) =>
       createVisit(cabinId!, visitData),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['visits', cabinId] });
       setShowForm(false);
       setFormData({ name: '', startDate: '', endDate: '' });
+      setSelectedVisitors([]);
+      setVisitorSearch('');
+      setIsSameDayVisit(false);
     },
     onError: (error) => {
       console.error('Error creating visit:', error);
@@ -52,13 +69,62 @@ const VisitsPage: React.FC = () => {
       alert('Please fill in all fields');
       return;
     }
-    createVisitMutation.mutate(formData);
+    const visitData = {
+      ...formData,
+      visitors: {
+        fullTimeVisitorIds: selectedVisitors.map(v => v.id)
+      }
+    };
+    createVisitMutation.mutate(visitData);
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
-    setFormData(prev => ({ ...prev, [name]: value }));
+    setFormData(prev => {
+      const updated = { ...prev, [name]: value };
+      // If start date changed and same-day visit is enabled, update end date
+      if (name === 'startDate' && isSameDayVisit) {
+        updated.endDate = value;
+      }
+      return updated;
+    });
   };
+
+  const handleSameDayVisitChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const isChecked = e.target.checked;
+    setIsSameDayVisit(isChecked);
+    if (isChecked && formData.startDate) {
+      // When checking, set end date to match start date
+      setFormData(prev => ({ ...prev, endDate: prev.startDate }));
+    }
+  };
+
+  const handleVisitorSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setVisitorSearch(e.target.value);
+    setShowVisitorDropdown(true);
+  };
+
+  const handleVisitorSelect = (visitor: Visitor) => {
+    if (!selectedVisitors.find(v => v.id === visitor.id)) {
+      setSelectedVisitors([...selectedVisitors, visitor]);
+    }
+    setVisitorSearch('');
+    setShowVisitorDropdown(false);
+  };
+
+  const handleVisitorRemove = (visitorId: number) => {
+    setSelectedVisitors(selectedVisitors.filter(v => v.id !== visitorId));
+  };
+
+  const handleVisitorSearchBlur = () => {
+    // Delay hiding dropdown to allow for click events
+    setTimeout(() => setShowVisitorDropdown(false), 150);
+  };
+
+  const filteredVisitors = visitors.filter(visitor =>
+    visitor.name.toLowerCase().includes(visitorSearch.toLowerCase()) &&
+    !selectedVisitors.find(v => v.id === visitor.id)
+  );
 
   const handleModalBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
     if (e.target === e.currentTarget) {
@@ -126,8 +192,63 @@ const VisitsPage: React.FC = () => {
               name="endDate"
               value={formData.endDate}
               onChange={handleInputChange}
+              disabled={isSameDayVisit}
               required
             />
+          </div>
+
+          <div className="form-group checkbox-group">
+            <input
+              type="checkbox"
+              id="sameDayVisit"
+              checked={isSameDayVisit}
+              onChange={handleSameDayVisitChange}
+            />
+            <label htmlFor="sameDayVisit">Same day visit</label>
+          </div>
+
+          <div className="form-group">
+            <label>Full-time Visitors:</label>
+            <div className="visitor-selector">
+              <div className="selected-visitors">
+                {selectedVisitors.map(visitor => (
+                  <span key={visitor.id} className="visitor-chip">
+                    {visitor.name}
+                    <button
+                      type="button"
+                      className="chip-remove"
+                      onClick={() => handleVisitorRemove(visitor.id)}
+                    >
+                      ×
+                    </button>
+                  </span>
+                ))}
+              </div>
+              <div className="visitor-search-container">
+                <input
+                  type="text"
+                  placeholder="Search visitors..."
+                  value={visitorSearch}
+                  onChange={handleVisitorSearchChange}
+                  onFocus={() => setShowVisitorDropdown(true)}
+                  onBlur={handleVisitorSearchBlur}
+                  className="visitor-search-input"
+                />
+                {showVisitorDropdown && filteredVisitors.length > 0 && (
+                  <div className="visitor-dropdown">
+                    {filteredVisitors.slice(0, 10).map(visitor => (
+                      <div
+                        key={visitor.id}
+                        className="visitor-option"
+                        onClick={() => handleVisitorSelect(visitor)}
+                      >
+                        {visitor.name}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
 
           <button
