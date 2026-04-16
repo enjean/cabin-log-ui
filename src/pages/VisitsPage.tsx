@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useParams } from 'react-router-dom'; // Standard routing hook
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getVisitsByCabin, createVisit } from '../api/visitApi';
-import { getVisitorsByCabin } from '../api/visitorApi';
+import { getVisitorsByCabin, createVisitor } from '../api/visitorApi';
 import type { Visitor } from '../types/visitor';
 import type { CreateVisitRequest } from '../types/visit';
 import './VisitsPage.css';
@@ -44,6 +44,23 @@ const VisitsPage: React.FC = () => {
     queryKey: ['visitors', cabinId],
     queryFn: () => getVisitorsByCabin(cabinId!),
     enabled: !!cabinId,
+  });
+
+  const createVisitorMutation = useMutation({
+    mutationFn: (visitorData: { name: string }) =>
+      createVisitor(cabinId!, visitorData),
+    onSuccess: (newVisitor: Visitor) => {
+      // Add the new visitor to the selected visitors
+      setSelectedVisitors(prev => [...prev, newVisitor]);
+      setVisitorSearch('');
+      setShowVisitorDropdown(false);
+      // Invalidate the visitors query to refresh the list
+      queryClient.invalidateQueries({ queryKey: ['visitors', cabinId] });
+    },
+    onError: (error) => {
+      console.error('Error creating visitor:', error);
+      alert('Failed to create visitor. Please try again.');
+    }
   });
 
   const createVisitMutation = useMutation({
@@ -112,6 +129,12 @@ const VisitsPage: React.FC = () => {
     setShowVisitorDropdown(false);
   };
 
+  const handleCreateNewVisitor = () => {
+    if (visitorSearch.trim()) {
+      createVisitorMutation.mutate({ name: visitorSearch.trim() });
+    }
+  };
+
   const handleVisitorRemove = (visitorId: number) => {
     setSelectedVisitors(selectedVisitors.filter(v => v.id !== visitorId));
   };
@@ -124,6 +147,10 @@ const VisitsPage: React.FC = () => {
   const filteredVisitors = visitors.filter(visitor =>
     visitor.name.toLowerCase().includes(visitorSearch.toLowerCase()) &&
     !selectedVisitors.find(v => v.id === visitor.id)
+  );
+
+  const showCreateOption = visitorSearch.trim() && !filteredVisitors.some(v => 
+    v.name.toLowerCase() === visitorSearch.toLowerCase().trim()
   );
 
   const handleModalBackdropClick = (e: React.MouseEvent<HTMLDivElement>) => {
@@ -234,7 +261,7 @@ const VisitsPage: React.FC = () => {
                   onBlur={handleVisitorSearchBlur}
                   className="visitor-search-input"
                 />
-                {showVisitorDropdown && filteredVisitors.length > 0 && (
+                {showVisitorDropdown && (filteredVisitors.length > 0 || showCreateOption) && (
                   <div className="visitor-dropdown">
                     {filteredVisitors.slice(0, 10).map(visitor => (
                       <div
@@ -245,6 +272,14 @@ const VisitsPage: React.FC = () => {
                         {visitor.name}
                       </div>
                     ))}
+                    {showCreateOption && (
+                      <div
+                        className="visitor-option create-option"
+                        onClick={handleCreateNewVisitor}
+                      >
+                        + Create "{visitorSearch.trim()}"
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

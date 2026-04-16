@@ -6,3 +6,7 @@ export interface Visitor {
 export interface VisitorsResponse {
     visitors: Visitor[];
 }
+
+export interface CreateVisitorRequest {
+    name: string;
+}
