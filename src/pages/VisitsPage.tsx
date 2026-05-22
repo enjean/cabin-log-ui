@@ -7,6 +7,19 @@ import type { Visitor } from '../types/visitor';
 import type { CreateVisitRequest } from '../types/visit';
 import './VisitsPage.css';
 
+type PartialVisitorPeriod = {
+  startDate: string;
+  endDate: string;
+};
+
+type PartialVisitorForm = {
+  id?: number;
+  name: string;
+  search: string;
+  showDropdown: boolean;
+  visitPeriods: PartialVisitorPeriod[];
+};
+
 const formatDate = (dateString: string): string => {
   const [year, month, day] = dateString.split('-').map(Number);
   const date = new Date(year, month - 1, day);
@@ -32,6 +45,8 @@ const VisitsPage: React.FC = () => {
   const [selectedVisitors, setSelectedVisitors] = useState<Visitor[]>([]);
   const [visitorSearch, setVisitorSearch] = useState('');
   const [showVisitorDropdown, setShowVisitorDropdown] = useState(false);
+  const [showPartialVisitorSection, setShowPartialVisitorSection] = useState(false);
+  const [partialVisitors, setPartialVisitors] = useState<PartialVisitorForm[]>([]);
 
   const { data: visits, isLoading, error } = useQuery({
     // Include cabinId in the key so the query is unique per cabin!
@@ -72,6 +87,8 @@ const VisitsPage: React.FC = () => {
       setFormData({ name: '', startDate: '', endDate: '' });
       setSelectedVisitors([]);
       setVisitorSearch('');
+      setPartialVisitors([]);
+      setShowPartialVisitorSection(false);
       setIsSameDayVisit(false);
     },
     onError: (error) => {
@@ -86,13 +103,75 @@ const VisitsPage: React.FC = () => {
       alert('Please fill in all fields');
       return;
     }
-    const visitData = {
+
+    const incompletePartialVisitor = partialVisitors.some(pv => !pv.id || pv.visitPeriods.some(period => !period.startDate || !period.endDate));
+    if (incompletePartialVisitor) {
+      alert('Please complete all partial visitor details or remove the incomplete entry.');
+      return;
+    }
+
+    const formattedPartialVisitors = partialVisitors.map(pv => ({
+      id: pv.id!,
+      visitPeriods: pv.visitPeriods.map(period => ({
+        startDate: period.startDate,
+        endDate: period.endDate,
+      })),
+    }));
+
+    const visitData: CreateVisitRequest = {
       ...formData,
       visitors: {
-        fullTimeVisitorIds: selectedVisitors.map(v => v.id)
-      }
+        fullTimeVisitorIds: selectedVisitors.map(v => v.id),
+        ...(formattedPartialVisitors.length > 0 ? { partialVisitors: formattedPartialVisitors } : {}),
+      },
     };
+
     createVisitMutation.mutate(visitData);
+  };
+
+  const updatePartialVisitor = (index: number, updated: Partial<PartialVisitorForm>) => {
+    setPartialVisitors(prev => prev.map((pv, pvIndex) => pvIndex === index ? { ...pv, ...updated } : pv));
+  };
+
+  const addPartialVisitor = () => {
+    setPartialVisitors(prev => [
+      ...prev,
+      {
+        id: undefined,
+        name: '',
+        search: '',
+        showDropdown: false,
+        visitPeriods: [{ startDate: '', endDate: '' }],
+      }
+    ]);
+    setShowPartialVisitorSection(true);
+  };
+
+  const removePartialVisitor = (index: number) => {
+    setPartialVisitors(prev => prev.filter((_, pvIndex) => pvIndex !== index));
+  };
+
+  const addPartialPeriod = (index: number) => {
+    setPartialVisitors(prev => prev.map((pv, pvIndex) => pvIndex === index ? {
+      ...pv,
+      visitPeriods: [...pv.visitPeriods, { startDate: '', endDate: '' }],
+    } : pv));
+  };
+
+  const removePartialPeriod = (visitorIndex: number, periodIndex: number) => {
+    setPartialVisitors(prev => prev.map((pv, pvIndex) => pvIndex === visitorIndex ? {
+      ...pv,
+      visitPeriods: pv.visitPeriods.filter((_, idx) => idx !== periodIndex),
+    } : pv));
+  };
+
+  const getPartialVisitorOptions = (currentIndex: number) => {
+    const search = partialVisitors[currentIndex].search.toLowerCase();
+    return visitors.filter(visitor =>
+      visitor.name.toLowerCase().includes(search) &&
+      !selectedVisitors.some(v => v.id === visitor.id) &&
+      !partialVisitors.some((pv, idx) => idx !== currentIndex && pv.id === visitor.id)
+    );
   };
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -133,6 +212,23 @@ const VisitsPage: React.FC = () => {
     if (visitorSearch.trim()) {
       createVisitorMutation.mutate({ name: visitorSearch.trim() });
     }
+  };
+
+  const handlePartialVisitorSearchChange = (index: number, value: string) => {
+    updatePartialVisitor(index, { search: value, showDropdown: true, name: '' });
+  };
+
+  const handlePartialVisitorSelect = (index: number, visitor: Visitor) => {
+    updatePartialVisitor(index, {
+      id: visitor.id,
+      name: visitor.name,
+      search: visitor.name,
+      showDropdown: false,
+    });
+  };
+
+  const handlePartialSearchBlur = (index: number) => {
+    setTimeout(() => updatePartialVisitor(index, { showDropdown: false }), 150);
   };
 
   const handleVisitorRemove = (visitorId: number) => {
@@ -285,6 +381,148 @@ const VisitsPage: React.FC = () => {
               </div>
             </div>
           </div>
+
+          <div className="form-group">
+            <button
+              type="button"
+              className="collapse-toggle"
+              onClick={() => setShowPartialVisitorSection(prev => !prev)}
+            >
+              {showPartialVisitorSection
+                ? 'Hide optional partial visitor details'
+                : 'Add optional partial visitor details'}
+            </button>
+          </div>
+
+          {showPartialVisitorSection && (
+            <div className="partial-section">
+              <p className="optional-note">
+                Optional: use this for visitors who attended only part of the visit.
+              </p>
+              {partialVisitors.map((partial, index) => {
+                const partialOptions = getPartialVisitorOptions(index);
+                return (
+                  <div key={index} className="partial-visitor-card">
+                    <div className="partial-header">
+                      <span>Partial visitor {index + 1}</span>
+                      <button
+                        type="button"
+                        className="remove-partial-btn"
+                        onClick={() => removePartialVisitor(index)}
+                      >
+                        Remove
+                      </button>
+                    </div>
+
+                    <div className="form-group">
+                      <label htmlFor={`partialVisitor-${index}`}>Visitor:</label>
+                      <div className="visitor-search-container">
+                        <input
+                          type="text"
+                          id={`partialVisitor-${index}`}
+                          value={partial.search}
+                          onChange={e => handlePartialVisitorSearchChange(index, e.target.value)}
+                          onFocus={() => updatePartialVisitor(index, { showDropdown: true })}
+                          onBlur={() => handlePartialSearchBlur(index)}
+                          placeholder="Search visitors..."
+                          className="visitor-search-input"
+                        />
+                        {partial.showDropdown && partialOptions.length > 0 && (
+                          <div className="visitor-dropdown">
+                            {partialOptions.slice(0, 10).map(visitor => (
+                              <div
+                                key={visitor.id}
+                                className="visitor-option"
+                                onClick={() => handlePartialVisitorSelect(index, visitor)}
+                              >
+                                {visitor.name}
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {partial.visitPeriods.map((period, periodIndex) => (
+                      <div key={periodIndex} className="partial-period-row">
+                        <div className="form-group">
+                          <label htmlFor={`partialStart-${index}-${periodIndex}`}>Start:</label>
+                          <input
+                            type="date"
+                            id={`partialStart-${index}-${periodIndex}`}
+                            value={period.startDate}
+                            onChange={e => {
+                              const value = e.target.value;
+                              setPartialVisitors(prev =>
+                                prev.map((pv, pvIndex) =>
+                                  pvIndex === index
+                                    ? {
+                                        ...pv,
+                                        visitPeriods: pv.visitPeriods.map((p, idx) =>
+                                          idx === periodIndex ? { ...p, startDate: value } : p
+                                        ),
+                                      }
+                                    : pv
+                                )
+                              );
+                            }}
+                            required
+                          />
+                        </div>
+                        <div className="form-group">
+                          <label htmlFor={`partialEnd-${index}-${periodIndex}`}>End:</label>
+                          <input
+                            type="date"
+                            id={`partialEnd-${index}-${periodIndex}`}
+                            value={period.endDate}
+                            onChange={e => {
+                              const value = e.target.value;
+                              setPartialVisitors(prev =>
+                                prev.map((pv, pvIndex) =>
+                                  pvIndex === index
+                                    ? {
+                                        ...pv,
+                                        visitPeriods: pv.visitPeriods.map((p, idx) =>
+                                          idx === periodIndex ? { ...p, endDate: value } : p
+                                        ),
+                                      }
+                                    : pv
+                                )
+                              );
+                            }}
+                            required
+                          />
+                        </div>
+                        <button
+                          type="button"
+                          className="remove-period-btn"
+                          onClick={() => removePartialPeriod(index, periodIndex)}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+
+                    <button
+                      type="button"
+                      className="secondary-btn"
+                      onClick={() => addPartialPeriod(index)}
+                    >
+                      Add another period
+                    </button>
+                  </div>
+                );
+              })}
+
+              <button
+                type="button"
+                className="secondary-btn"
+                onClick={addPartialVisitor}
+              >
+                Add partial visitor
+              </button>
+            </div>
+          )}
 
           <button
             type="submit"

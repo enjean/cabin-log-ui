@@ -255,6 +255,82 @@
   background-color: #c8e6c9;
 }
 
+.collapse-toggle,
+.secondary-btn {
+  background-color: #f4f6fb;
+  color: #2c3e50;
+  border: 1px solid #dfe4ed;
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, border-color 0.2s ease;
+}
+
+.collapse-toggle:hover,
+.secondary-btn:hover {
+  background-color: #edf2f8;
+}
+
+.partial-section {
+  border: 1px solid #dfe4ed;
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 16px;
+  background-color: #fbfcfe;
+}
+
+.optional-note {
+  margin: 0 0 12px;
+  color: #5b6b84;
+  font-size: 14px;
+}
+
+.partial-visitor-card {
+  border: 1px solid #e5e9f0;
+  border-radius: 8px;
+  padding: 14px;
+  margin-bottom: 16px;
+  background-color: white;
+}
+
+.partial-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  gap: 12px;
+}
+
+.remove-partial-btn,
+.remove-period-btn {
+  background: none;
+  border: none;
+  color: #c0392b;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 6px 8px;
+  border-radius: 6px;
+}
+
+.remove-partial-btn:hover,
+.remove-period-btn:hover {
+  background-color: rgba(192, 57, 43, 0.08);
+}
+
+.partial-period-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  margin-bottom: 12px;
+}
+
+.partial-period-row .form-group {
+  flex: 1 1 220px;
+  min-width: 220px;
+}
+
 .submit-btn {
   background-color: #27ae60;
   color: white;
