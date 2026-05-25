@@ -401,3 +401,23 @@
   padding: 20px;
   font-style: italic;
 }
+
+/* Toast */
+.toast {
+  position: fixed;
+  right: 20px;
+  bottom: 20px;
+  background: rgba(44,62,80,0.95);
+  color: #fff;
+  padding: 10px 14px;
+  border-radius: 8px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+  z-index: 2000;
+  font-weight: 600;
+}
+.toast.error {
+  background: #c0392b;
+}
+.toast.success {
+  background: #27ae60;
+}

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { useParams } from 'react-router-dom'; // Standard routing hook
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getVisitsByCabin, createVisit } from '../api/visitApi';
@@ -47,6 +47,13 @@ const VisitsPage: React.FC = () => {
   const [showVisitorDropdown, setShowVisitorDropdown] = useState(false);
   const [showPartialVisitorSection, setShowPartialVisitorSection] = useState(false);
   const [partialVisitors, setPartialVisitors] = useState<PartialVisitorForm[]>([]);
+  const partialStartRefs = useRef<Array<HTMLInputElement | null>>([]);
+
+  const [toast, setToast] = useState<{ message: string; type?: 'success' | 'error' } | null>(null);
+  const showToast = (message: string, type: 'success' | 'error' = 'success') => {
+    setToast({ message, type });
+    window.setTimeout(() => setToast(null), 3000);
+  };
 
   const { data: visits, isLoading, error } = useQuery({
     // Include cabinId in the key so the query is unique per cabin!
@@ -64,9 +71,8 @@ const VisitsPage: React.FC = () => {
   const createVisitorMutation = useMutation({
     mutationFn: (visitorData: { name: string }) =>
       createVisitor(cabinId!, visitorData),
-    onSuccess: (newVisitor: Visitor) => {
-      // Add the new visitor to the selected visitors
-      setSelectedVisitors(prev => [...prev, newVisitor]);
+    onSuccess: () => {
+      // Clear full-time search UI and refresh cache; selection is handled by caller
       setVisitorSearch('');
       setShowVisitorDropdown(false);
       // Invalidate the visitors query to refresh the list
@@ -74,7 +80,7 @@ const VisitsPage: React.FC = () => {
     },
     onError: (error) => {
       console.error('Error creating visitor:', error);
-      alert('Failed to create visitor. Please try again.');
+      showToast('Failed to create visitor. Please try again.', 'error');
     }
   });
 
@@ -93,7 +99,7 @@ const VisitsPage: React.FC = () => {
     },
     onError: (error) => {
       console.error('Error creating visit:', error);
-      alert('Failed to create visit. Please try again.');
+      showToast('Failed to create visit. Please try again.', 'error');
     }
   });
 
@@ -210,7 +216,19 @@ const VisitsPage: React.FC = () => {
 
   const handleCreateNewVisitor = () => {
     if (visitorSearch.trim()) {
-      createVisitorMutation.mutate({ name: visitorSearch.trim() });
+      const name = visitorSearch.trim();
+      createVisitorMutation.mutate({ name }, {
+        onSuccess: (newVisitor: Visitor) => {
+          setSelectedVisitors(prev => [...prev, newVisitor]);
+          setVisitorSearch('');
+          setShowVisitorDropdown(false);
+          queryClient.invalidateQueries({ queryKey: ['visitors', cabinId] });
+          showToast(`Created visitor "${newVisitor.name}"`, 'success');
+        },
+        onError: () => {
+          showToast('Failed to create visitor. Please try again.', 'error');
+        }
+      });
     }
   };
 
@@ -224,6 +242,29 @@ const VisitsPage: React.FC = () => {
       name: visitor.name,
       search: visitor.name,
       showDropdown: false,
+    });
+  };
+
+  const handleCreateNewPartialVisitor = (index: number) => {
+    const name = partialVisitors[index]?.search?.trim();
+    if (!name) return;
+    createVisitorMutation.mutate({ name }, {
+      onSuccess: (newVisitor: Visitor) => {
+        updatePartialVisitor(index, {
+          id: newVisitor.id,
+          name: newVisitor.name,
+          search: newVisitor.name,
+          showDropdown: false,
+        });
+        queryClient.invalidateQueries({ queryKey: ['visitors', cabinId] });
+        showToast(`Created visitor "${newVisitor.name}"`, 'success');
+        // focus the first start date input for this partial visitor
+        window.setTimeout(() => partialStartRefs.current[index]?.focus(), 50);
+      },
+      onError: (error) => {
+        console.error('Error creating partial visitor:', error);
+        showToast('Failed to create visitor. Please try again.', 'error');
+      }
     });
   };
 
@@ -260,6 +301,9 @@ const VisitsPage: React.FC = () => {
 
   return (
     <div className="visits-container">
+      {toast && (
+        <div className={`toast ${toast.type ? toast.type : ''}`}>{toast.message}</div>
+      )}
       <h1>Cabin Visits</h1>
       <button
         className="add-visit-btn"
@@ -427,7 +471,7 @@ const VisitsPage: React.FC = () => {
                           placeholder="Search visitors..."
                           className="visitor-search-input"
                         />
-                        {partial.showDropdown && partialOptions.length > 0 && (
+                        {partial.showDropdown && (partialOptions.length > 0 || (partial.search && partial.search.trim())) && (
                           <div className="visitor-dropdown">
                             {partialOptions.slice(0, 10).map(visitor => (
                               <div
@@ -438,6 +482,14 @@ const VisitsPage: React.FC = () => {
                                 {visitor.name}
                               </div>
                             ))}
+                            {partial.search && partial.search.trim() && !partialOptions.some(v => v.name.toLowerCase() === partial.search.toLowerCase().trim()) && (
+                              <div
+                                className="visitor-option create-option"
+                                onClick={() => handleCreateNewPartialVisitor(index)}
+                              >
+                                + Create "{partial.search.trim()}"
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -451,7 +503,7 @@ const VisitsPage: React.FC = () => {
                             type="date"
                             id={`partialStart-${index}-${periodIndex}`}
                             value={period.startDate}
-                            onChange={e => {
+                              onChange={e => {
                               const value = e.target.value;
                               setPartialVisitors(prev =>
                                 prev.map((pv, pvIndex) =>
@@ -466,7 +518,11 @@ const VisitsPage: React.FC = () => {
                                 )
                               );
                             }}
-                            required
+                              ref={el => {
+                                // attach ref for the first period's start input for autofocus
+                                if (periodIndex === 0) partialStartRefs.current[index] = el;
+                              }}
+                              required
                           />
                         </div>
                         <div className="form-group">
